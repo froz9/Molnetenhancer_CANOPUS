@@ -18,10 +18,12 @@ st.markdown("""
 
 def get_gnps_network_data(task_id):
     """Downloads the GNPS output zip and extracts the cluster info file."""
+    # URL matches the original R code structure
     url = f"https://gnps.ucsd.edu/ProteoSAFe/DownloadResult?task={task_id}&view=download_cytoscape_data"
     
     try:
-        response = requests.get(url)
+        # CHANGE: We use .post() instead of .get() to match 'curl -d ""' behavior
+        response = requests.post(url, data={}) 
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         st.error(f"Failed to download from GNPS. Check Task ID. Error: {e}")
@@ -30,7 +32,6 @@ def get_gnps_network_data(task_id):
     try:
         with zipfile.ZipFile(io.BytesIO(response.content)) as z:
             # Intelligent search for the correct cluster info file within the zip structure
-            # We look for files containing 'clusterinfo' but avoid MAC/OS artifacts
             candidates = [f for f in z.namelist() if "clusterinfo" in f and "__MACOSX" not in f]
             
             target_file = None
@@ -40,7 +41,7 @@ def get_gnps_network_data(task_id):
                     target_file = f
                     break
             
-            # Priority 2: If not found, look for other variations (common in older/newer GNPS versions)
+            # Priority 2: If not found, look for other variations
             if not target_file and candidates:
                 target_file = candidates[0]
 
