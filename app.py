@@ -181,8 +181,8 @@ if uploaded_file and task_id_input:
                     base_cols = ['cluster.index', 'componentindex']
                     
                     # Filter columns for the specific download requirements
-                    cols_npc = [c for c in final_df.columns if 'NPC' in c and ('Consensus' in c or 'Score' in c)]
-                    cols_classy = [c for c in final_df.columns if 'ClassyFire' in c and ('Consensus' in c or 'Score' in c)]
+                    cols_npc = [c for c in final_df.columns if 'NPC' in c and ('Consensus' in c)]
+                    cols_classy = [c for c in final_df.columns if 'ClassyFire' in c and ('Consensus' in c)]
                     
                     df_npc = final_df[base_cols + cols_npc]
                     df_classy = final_df[base_cols + cols_classy]
