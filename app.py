@@ -11,7 +11,7 @@ st.markdown("""
 **Workflow:**
 1. Paste your **GNPS Task ID** (from the URL of your GNPS job).
 2. Upload your **SIRIUS/CANOPUS** summary file.
-3. Download the propagated consensus classifications.
+3. Preview and download the propagated consensus classifications.
 """)
 
 # --- Helper Functions ---
@@ -187,6 +187,10 @@ if uploaded_file and task_id_input:
                     df_npc = final_df[base_cols + cols_npc]
                     df_classy = final_df[base_cols + cols_classy]
                     df_all = final_df[base_cols + cols_npc + cols_classy]
+                    
+                    # --- PREVIEW SECTION ---
+                    st.markdown("### 🔍 Result Preview (Combined)")
+                    st.dataframe(df_all.head(50))
                     
                     st.markdown("### 📥 Download Results")
                     col1, col2, col3 = st.columns(3)
