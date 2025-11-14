@@ -18,10 +18,10 @@ st.markdown("""
 
 def get_gnps_network_data(task_id):
     """Downloads the GNPS output zip and extracts the cluster info file."""
-    # We use POST here to satisfy the GNPS server requirement
     url = f"https://gnps.ucsd.edu/ProteoSAFe/DownloadResult?task={task_id}&view=download_cytoscape_data"
     
     try:
+        # Use POST to satisfy GNPS server
         response = requests.post(url, data={}) 
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
@@ -147,79 +147,86 @@ def process_pipeline(gnps_df, canopus_df):
 with st.sidebar:
     st.header("Settings")
     
-    # 1. GNPS Task ID Input (Placeholder creates the "Gray" effect)
     task_id_input = st.text_input(
         "GNPS Task ID", 
         placeholder="e.g., dacf2cdcdb8b4558a62716f4e9ca4fdb"
     )
     
-    # 2. File Upload
     uploaded_file = st.file_uploader("Upload CANOPUS Summary (tsv/txt)", type=['tsv', 'txt', 'csv'])
+
+    st.markdown("---")
+    run_btn = st.button("Run Analysis", type="primary")
 
 # --- Execution Logic ---
 
-if uploaded_file and task_id_input:
-    st.subheader("Data Processing")
-    
-    if st.button("Run Analysis"):
+# 1. IF button is clicked, run logic and save to session state
+if run_btn:
+    if uploaded_file and task_id_input:
         with st.spinner(f"Downloading GNPS Task {task_id_input}..."):
             gnps_data = get_gnps_network_data(task_id_input)
             
         if gnps_data is not None:
             try:
+                # Reset file pointer just in case
+                uploaded_file.seek(0)
                 canopus_data = pd.read_csv(uploaded_file, sep='\t')
-                st.success("Files loaded successfully.")
                 
                 with st.spinner("Propagating annotations..."):
                     final_df = process_pipeline(gnps_data, canopus_data)
                 
                 if final_df is not None:
+                    # SAVE TO SESSION STATE
+                    st.session_state['processed_data'] = final_df
                     st.success("Processing Complete!")
-                    
-                    # --- Prepare Output Dataframes ---
-                    # Base columns always required
-                    base_cols = ['cluster.index', 'componentindex']
-                    
-                    # Filter columns for the specific download requirements
-                    cols_npc = [c for c in final_df.columns if 'NPC' in c and ('Consensus' in c or 'Score' in c)]
-                    cols_classy = [c for c in final_df.columns if 'ClassyFire' in c and ('Consensus' in c or 'Score' in c)]
-                    
-                    df_npc = final_df[base_cols + cols_npc]
-                    df_classy = final_df[base_cols + cols_classy]
-                    df_all = final_df[base_cols + cols_npc + cols_classy]
-                    
-                    # --- PREVIEW SECTION ---
-                    st.markdown("### 🔍 Result Preview (Combined)")
-                    st.dataframe(df_all.head(50))
-                    
-                    st.markdown("### 📥 Download Results")
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        st.download_button(
-                            label="Download NPC Only",
-                            data=df_npc.to_csv(index=False).encode('utf-8'),
-                            file_name="Consensus_NPC.csv",
-                            mime="text/csv"
-                        )
-                    
-                    with col2:
-                        st.download_button(
-                            label="Download ClassyFire Only",
-                            data=df_classy.to_csv(index=False).encode('utf-8'),
-                            file_name="Consensus_ClassyFire.csv",
-                            mime="text/csv"
-                        )
-                        
-                    with col3:
-                        st.download_button(
-                            label="Download Combined",
-                            data=df_all.to_csv(index=False).encode('utf-8'),
-                            file_name="Consensus_All.csv",
-                            mime="text/csv"
-                        )
-
             except Exception as e:
                 st.error(f"Error reading the CANOPUS file: {e}")
+    else:
+        st.error("Please provide both a Task ID and a CANOPUS file.")
+
+# 2. CHECK if data exists in session state (This persists across re-runs/downloads)
+if 'processed_data' in st.session_state:
+    final_df = st.session_state['processed_data']
+
+    # --- Prepare Output Dataframes ---
+    base_cols = ['cluster.index', 'componentindex']
+    
+    cols_npc = [c for c in final_df.columns if 'NPC' in c and ('Consensus' in c or 'Score' in c)]
+    cols_classy = [c for c in final_df.columns if 'ClassyFire' in c and ('Consensus' in c or 'Score' in c)]
+    
+    df_npc = final_df[base_cols + cols_npc]
+    df_classy = final_df[base_cols + cols_classy]
+    df_all = final_df[base_cols + cols_npc + cols_classy]
+    
+    # --- PREVIEW ---
+    st.subheader("🔍 Result Preview (Combined)")
+    st.dataframe(df_all.head(50))
+    
+    # --- DOWNLOADS ---
+    st.subheader("📥 Download Results")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.download_button(
+            label="Download NPC Only",
+            data=df_npc.to_csv(index=False).encode('utf-8'),
+            file_name="Consensus_NPC.csv",
+            mime="text/csv"
+        )
+    
+    with col2:
+        st.download_button(
+            label="Download ClassyFire Only",
+            data=df_classy.to_csv(index=False).encode('utf-8'),
+            file_name="Consensus_ClassyFire.csv",
+            mime="text/csv"
+        )
+        
+    with col3:
+        st.download_button(
+            label="Download Combined",
+            data=df_all.to_csv(index=False).encode('utf-8'),
+            file_name="Consensus_All.csv",
+            mime="text/csv"
+        )
 else:
     st.info("Please paste your GNPS Task ID and upload your CANOPUS summary file to begin.")
