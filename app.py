@@ -5,8 +5,13 @@ import zipfile
 import io
 
 # --- Configuration & Title ---
-st.set_page_config(page_title="GNPS & SIRIUS Consensus Tool", layout="wide")
-st.title("🧬 GNPS & SIRIUS Consensus Propagation Tool")
+st.set_page_config(page_title="Molnetenhancer on CANOPUS Results Tool", layout="wide",
+    page_icon="⚗️", stmenu_items={
+        'Report a bug': "mailto:f9.alan@gmail.com"
+    })
+st.title("Molnetenhancer and CANOPUS Integration Tool")
+st.image("logo_L125.png", width=600) 
+
 st.markdown("""
 **Workflow:**
 1. Paste your **GNPS Task ID** (from the URL of your GNPS job).
@@ -188,10 +193,10 @@ if 'processed_data' in st.session_state:
     final_df = st.session_state['processed_data']
 
     # --- Prepare Output Dataframes ---
-    base_cols = ['cluster.index', 'componentindex']
+    base_cols = ['cluster.index']
     
-    cols_npc = [c for c in final_df.columns if 'NPC' in c and ('Consensus' in c or 'Score' in c)]
-    cols_classy = [c for c in final_df.columns if 'ClassyFire' in c and ('Consensus' in c or 'Score' in c)]
+    cols_npc = [c for c in final_df.columns if 'NPC' in c and ('Consensus' in c)]
+    cols_classy = [c for c in final_df.columns if 'ClassyFire' in c and ('Consensus' in c)]
     
     df_npc = final_df[base_cols + cols_npc]
     df_classy = final_df[base_cols + cols_classy]
