@@ -162,6 +162,9 @@ with st.sidebar:
 # 1. IF button is clicked, run logic and save to session state
 if run_btn:
     if uploaded_file and task_id_input:
+        st.subheader("Data Processing")
+    
+    if st.button("Run Analysis"):
         with st.spinner(f"Downloading GNPS Task {task_id_input}..."):
             gnps_data = get_gnps_network_data(task_id_input)
             
@@ -188,7 +191,7 @@ if 'processed_data' in st.session_state:
     final_df = st.session_state['processed_data']
 
     # --- Prepare Output Dataframes ---
-    base_cols = ['cluster.index', 'componentindex']
+    base_cols = ['cluster.index']
     
     cols_npc = [c for c in final_df.columns if 'NPC' in c and ('Consensus' in c)]
     cols_classy = [c for c in final_df.columns if 'ClassyFire' in c and ('Consensus' in c)]
