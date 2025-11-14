@@ -6,9 +6,7 @@ import io
 
 # --- Configuration & Title ---
 st.set_page_config(page_title="Molnetenhancer on CANOPUS Results Tool", layout="wide",
-    page_icon="⚗️", stmenu_items={
-        'Report a bug': "mailto:f9.alan@gmail.com"
-    })
+    page_icon="⚗️")
 st.title("Molnetenhancer and CANOPUS Integration Tool")
 st.image("logo_L125.png", width=300) 
 
