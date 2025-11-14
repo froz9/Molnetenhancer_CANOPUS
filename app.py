@@ -10,7 +10,7 @@ st.set_page_config(page_title="Molnetenhancer on CANOPUS Results Tool", layout="
         'Report a bug': "mailto:f9.alan@gmail.com"
     })
 st.title("Molnetenhancer and CANOPUS Integration Tool")
-st.image("logo_L125.png", width=600) 
+st.image("logo_L125.png", width=300) 
 
 st.markdown("""
 **Workflow:**
