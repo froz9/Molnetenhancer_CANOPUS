@@ -56,21 +56,32 @@ def get_gnps_network_data(task_id):
         return None
 
 def calculate_consensus_score(df, class_col, component_col='componentindex'):
-    """Calculates the dominant class for each component index."""
+    """Calculates the dominant class for each component index, EXCLUDING singletons (-1)."""
+    
+    # 1. Filter out invalid classes AND singletons (-1)
     valid = df[
         df[class_col].notna() & 
         (df[class_col] != "") & 
-        (df[class_col] != "NA")
+        (df[class_col] != "NA") &
+        (df[component_col] != -1)  # <--- CRITICAL FIX: Ignore singletons
     ].copy()
 
     if valid.empty:
         return pd.DataFrame(columns=[component_col, 'consensus_class', 'score'])
 
+    # 2. Count occurrences of each class within each component
     counts = valid.groupby([component_col, class_col]).size().reset_index(name='count')
+    
+    # 3. Sort to get the most frequent class on top
     counts = counts.sort_values([component_col, 'count'], ascending=[True, False])
+    
+    # 4. Calculate totals per component to get the score (percentage)
     totals = counts.groupby(component_col)['count'].sum().reset_index(name='total')
+    
+    # 5. Pick the top class
     consensus = counts.drop_duplicates(subset=[component_col], keep='first')
     
+    # 6. Merge to calculate score
     result = pd.merge(consensus, totals, on=component_col)
     result['score'] = result['count'] / result['total']
     
@@ -84,12 +95,22 @@ def process_pipeline(gnps_df, canopus_df):
         st.error("GNPS file is missing 'componentindex' or 'cluster index' columns.")
         return None
         
-    net_data = gnps_df[['componentindex', 'cluster.index']]
+    net_data = gnps_df[['componentindex', 'cluster.index']].copy()
+    
+    # --- FIX: Force Cluster Index to Integer to ensure merge works ---
+    net_data['cluster.index'] = pd.to_numeric(net_data['cluster.index'], errors='coerce')
 
     # --- Standardize CANOPUS ---
     if 'mappingFeatureId' in canopus_df.columns:
         canopus_df = canopus_df.rename(columns={'mappingFeatureId': 'cluster.index'})
+    
+    # --- FIX: Force Cluster Index to Integer here too ---
+    canopus_df['cluster.index'] = pd.to_numeric(canopus_df['cluster.index'], errors='coerce')
 
+    # Drop rows where ID couldn't be converted (optional safety)
+    canopus_df = canopus_df.dropna(subset=['cluster.index'])
+    net_data = net_data.dropna(subset=['cluster.index'])
+    
     col_mapping = {
         'NPC#pathway': 'NPC_Pathway',
         'NPC#superclass': 'NPC_Superclass',
