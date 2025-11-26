@@ -55,26 +55,39 @@ def get_gnps_network_data(task_id):
         st.error("The downloaded file was not a valid Zip. The Task ID might be incorrect.")
         return None
 
+
 def calculate_consensus_score(df, class_col, component_col='componentindex'):
-    """Calculates the dominant class for each component index."""
+    """Calculates the dominant class for each component index, EXCLUDING SINGLETONS."""
+    
+    # Filter 1: Valid Classifications
     valid = df[
         df[class_col].notna() & 
         (df[class_col] != "") & 
         (df[class_col] != "NA")
     ].copy()
 
+    # Filter 2: CRITICAL FIX - Exclude Singletons (Component -1)
+    # If we don't do this, all singletons are averaged together!
+    valid = valid[valid[component_col] != -1]
+
     if valid.empty:
         return pd.DataFrame(columns=[component_col, 'consensus_class', 'score'])
 
+    # Calculate frequencies
     counts = valid.groupby([component_col, class_col]).size().reset_index(name='count')
     counts = counts.sort_values([component_col, 'count'], ascending=[True, False])
+    
+    # Calculate totals per component for scoring
     totals = counts.groupby(component_col)['count'].sum().reset_index(name='total')
+    
+    # Pick top 1
     consensus = counts.drop_duplicates(subset=[component_col], keep='first')
     
     result = pd.merge(consensus, totals, on=component_col)
     result['score'] = result['count'] / result['total']
     
     return result[[component_col, class_col, 'score']].rename(columns={class_col: 'consensus_class'})
+
 
 def process_pipeline(gnps_df, canopus_df):
     # --- Standardize GNPS ---
@@ -83,12 +96,17 @@ def process_pipeline(gnps_df, canopus_df):
     if 'componentindex' not in gnps_df.columns or 'cluster.index' not in gnps_df.columns:
         st.error("GNPS file is missing 'componentindex' or 'cluster index' columns.")
         return None
-        
+    
+    # Ensure ID is treated as string for safe merging
+    gnps_df['cluster.index'] = gnps_df['cluster.index'].astype(str)
     net_data = gnps_df[['componentindex', 'cluster.index']]
 
     # --- Standardize CANOPUS ---
     if 'mappingFeatureId' in canopus_df.columns:
         canopus_df = canopus_df.rename(columns={'mappingFeatureId': 'cluster.index'})
+    
+    # Ensure ID is treated as string for safe merging
+    canopus_df['cluster.index'] = canopus_df['cluster.index'].astype(str)
 
     col_mapping = {
         'NPC#pathway': 'NPC_Pathway',
@@ -109,6 +127,7 @@ def process_pipeline(gnps_df, canopus_df):
     sirius_subset = canopus_df[['cluster.index'] + target_cols].copy()
 
     # --- Merge & Propagate ---
+    # We use 'right' merge to keep the Network topology. 
     merged_df = pd.merge(sirius_subset, net_data, on='cluster.index', how='right')
 
     propagation_targets = [
@@ -123,6 +142,7 @@ def process_pipeline(gnps_df, canopus_df):
     progress_bar = st.progress(0)
     
     for i, (target_col, cons_col_name, score_col_name) in enumerate(propagation_targets):
+        # 1. Calculate consensus (Now excludes Component -1)
         consensus_df = calculate_consensus_score(merged_df, target_col)
         
         if not consensus_df.empty:
@@ -132,11 +152,14 @@ def process_pipeline(gnps_df, canopus_df):
             merged_df[cons_col_name] = pd.NA
             merged_df[score_col_name] = pd.NA
         
-        # Propagate Logic
+        # 2. Logic: Only propagate if it is a VALID NETWORK component (not -1)
         is_network = merged_df['componentindex'] != -1
         has_consensus = merged_df[cons_col_name].notna()
+        
+        # Check if original is missing
         original_missing = (merged_df[target_col].isna()) | (merged_df[target_col] == "") | (merged_df[target_col] == "NA")
         
+        # Apply mask
         mask = is_network & has_consensus & original_missing
         merged_df.loc[mask, target_col] = merged_df.loc[mask, cons_col_name]
         
