@@ -63,7 +63,7 @@ def calculate_consensus_score(df, class_col, component_col='componentindex'):
         df[class_col].notna() & 
         (df[class_col] != "") & 
         (df[class_col] != "NA") &
-        (df[component_col] != -1)  # <--- CRITICAL FIX: Ignore singletons
+        (df[component_col] != -1)  # <--- CRITICAL FIX 1: Ignore singletons
     ].copy()
 
     if valid.empty:
@@ -87,6 +87,7 @@ def calculate_consensus_score(df, class_col, component_col='componentindex'):
     
     return result[[component_col, class_col, 'score']].rename(columns={class_col: 'consensus_class'})
 
+
 def process_pipeline(gnps_df, canopus_df):
     # --- Standardize GNPS ---
     gnps_df.columns = [c.replace('cluster index', 'cluster.index') for c in gnps_df.columns]
@@ -96,20 +97,31 @@ def process_pipeline(gnps_df, canopus_df):
         return None
         
     net_data = gnps_df[['componentindex', 'cluster.index']].copy()
-    
-    # --- FIX: Force Cluster Index to Integer to ensure merge works ---
-    net_data['cluster.index'] = pd.to_numeric(net_data['cluster.index'], errors='coerce')
+
+    # --- CRITICAL FIX 2: Robust Type Conversion for GNPS Network Data ---
+    # Ensure cluster IDs are integers to match CANOPUS data correctly during merge
+    try:
+        net_data['cluster.index'] = pd.to_numeric(net_data['cluster.index'], errors='coerce', downcast='integer')
+        net_data = net_data.dropna(subset=['cluster.index'])
+        net_data['cluster.index'] = net_data['cluster.index'].astype(int)
+    except Exception as e:
+        st.error(f"Error converting GNPS cluster.index to integer: {e}")
+        return None
+
 
     # --- Standardize CANOPUS ---
     if 'mappingFeatureId' in canopus_df.columns:
         canopus_df = canopus_df.rename(columns={'mappingFeatureId': 'cluster.index'})
-    
-    # --- FIX: Force Cluster Index to Integer here too ---
-    canopus_df['cluster.index'] = pd.to_numeric(canopus_df['cluster.index'], errors='coerce')
 
-    # Drop rows where ID couldn't be converted (optional safety)
-    canopus_df = canopus_df.dropna(subset=['cluster.index'])
-    net_data = net_data.dropna(subset=['cluster.index'])
+    # --- CRITICAL FIX 2: Robust Type Conversion for CANOPUS Data ---
+    # Ensure cluster IDs are integers to match GNPS data correctly during merge
+    try:
+        canopus_df['cluster.index'] = pd.to_numeric(canopus_df['cluster.index'], errors='coerce', downcast='integer')
+        canopus_df = canopus_df.dropna(subset=['cluster.index'])
+        canopus_df['cluster.index'] = canopus_df['cluster.index'].astype(int)
+    except Exception as e:
+        st.error(f"Error converting CANOPUS cluster.index to integer: {e}")
+        return None
     
     col_mapping = {
         'NPC#pathway': 'NPC_Pathway',
@@ -130,6 +142,7 @@ def process_pipeline(gnps_df, canopus_df):
     sirius_subset = canopus_df[['cluster.index'] + target_cols].copy()
 
     # --- Merge & Propagate ---
+    # Merge using the now-consistent integer IDs
     merged_df = pd.merge(sirius_subset, net_data, on='cluster.index', how='right')
 
     propagation_targets = [
@@ -158,6 +171,8 @@ def process_pipeline(gnps_df, canopus_df):
         has_consensus = merged_df[cons_col_name].notna()
         original_missing = (merged_df[target_col].isna()) | (merged_df[target_col] == "") | (merged_df[target_col] == "NA")
         
+        # This mask ensures we only update the classification column if a consensus exists 
+        # AND the original classification was missing (the Molnetenhancer step)
         mask = is_network & has_consensus & original_missing
         merged_df.loc[mask, target_col] = merged_df.loc[mask, cons_col_name]
         
@@ -165,7 +180,7 @@ def process_pipeline(gnps_df, canopus_df):
 
     progress_bar.empty()
     return merged_df
-
+    
 # --- Main UI Layout ---
 
 with st.sidebar:
