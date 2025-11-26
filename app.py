@@ -127,7 +127,7 @@ def process_pipeline(gnps_df, canopus_df):
     sirius_subset = canopus_df[['cluster.index'] + target_cols].copy()
 
     # --- Merge & Propagate ---
-    # We use 'right' merge to keep the Network topology. 
+    # Use 'right' merge to keep the Network topology (all nodes in GNPS)
     merged_df = pd.merge(sirius_subset, net_data, on='cluster.index', how='right')
 
     propagation_targets = [
@@ -142,7 +142,7 @@ def process_pipeline(gnps_df, canopus_df):
     progress_bar = st.progress(0)
     
     for i, (target_col, cons_col_name, score_col_name) in enumerate(propagation_targets):
-        # 1. Calculate consensus (Now excludes Component -1)
+        # 1. Calculate consensus (This assumes you are using the FIXED function that excludes -1)
         consensus_df = calculate_consensus_score(merged_df, target_col)
         
         if not consensus_df.empty:
@@ -152,7 +152,17 @@ def process_pipeline(gnps_df, canopus_df):
             merged_df[cons_col_name] = pd.NA
             merged_df[score_col_name] = pd.NA
         
+        # --- NEW BLOCK: SINGLETON BACKFILL ---
+        # If component is -1 (Singleton) and original data exists, copy it to Consensus column
+        # This ensures the Consensus column is complete and doesn't show empty for Singletons
+        singleton_mask = (merged_df['componentindex'] == -1) & (merged_df[target_col].notna()) & (merged_df[target_col] != "")
+        
+        merged_df.loc[singleton_mask, cons_col_name] = merged_df.loc[singleton_mask, target_col]
+        merged_df.loc[singleton_mask, score_col_name] = 1.0  # 100% confidence for a singleton
+        # -------------------------------------
+
         # 2. Logic: Only propagate if it is a VALID NETWORK component (not -1)
+        # This logic fills the *Original* column (target_col) with the *Consensus* if original is missing
         is_network = merged_df['componentindex'] != -1
         has_consensus = merged_df[cons_col_name].notna()
         
