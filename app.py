@@ -56,37 +56,25 @@ def get_gnps_network_data(task_id):
         return None
 
 def calculate_consensus_score(df, class_col, component_col='componentindex'):
-    """Calculates the dominant class for each component index, EXCLUDING singletons (-1)."""
-    
-    # 1. Filter out invalid classes AND singletons (-1)
+    """Calculates the dominant class for each component index."""
     valid = df[
         df[class_col].notna() & 
         (df[class_col] != "") & 
-        (df[class_col] != "NA") &
-        (df[component_col] != -1)  # <--- CRITICAL FIX 1: Ignore singletons
+        (df[class_col] != "NA")
     ].copy()
 
     if valid.empty:
         return pd.DataFrame(columns=[component_col, 'consensus_class', 'score'])
 
-    # 2. Count occurrences of each class within each component
     counts = valid.groupby([component_col, class_col]).size().reset_index(name='count')
-    
-    # 3. Sort to get the most frequent class on top
     counts = counts.sort_values([component_col, 'count'], ascending=[True, False])
-    
-    # 4. Calculate totals per component to get the score (percentage)
     totals = counts.groupby(component_col)['count'].sum().reset_index(name='total')
-    
-    # 5. Pick the top class
     consensus = counts.drop_duplicates(subset=[component_col], keep='first')
     
-    # 6. Merge to calculate score
     result = pd.merge(consensus, totals, on=component_col)
     result['score'] = result['count'] / result['total']
     
     return result[[component_col, class_col, 'score']].rename(columns={class_col: 'consensus_class'})
-
 
 def process_pipeline(gnps_df, canopus_df):
     # --- Standardize GNPS ---
@@ -96,33 +84,12 @@ def process_pipeline(gnps_df, canopus_df):
         st.error("GNPS file is missing 'componentindex' or 'cluster index' columns.")
         return None
         
-    net_data = gnps_df[['componentindex', 'cluster.index']].copy()
-
-    # --- CRITICAL FIX 2: Robust Type Conversion for GNPS Network Data ---
-    # Ensure cluster IDs are integers to match CANOPUS data correctly during merge
-    try:
-        net_data['cluster.index'] = pd.to_numeric(net_data['cluster.index'], errors='coerce', downcast='integer')
-        net_data = net_data.dropna(subset=['cluster.index'])
-        net_data['cluster.index'] = net_data['cluster.index'].astype(int)
-    except Exception as e:
-        st.error(f"Error converting GNPS cluster.index to integer: {e}")
-        return None
-
+    net_data = gnps_df[['componentindex', 'cluster.index']]
 
     # --- Standardize CANOPUS ---
     if 'mappingFeatureId' in canopus_df.columns:
         canopus_df = canopus_df.rename(columns={'mappingFeatureId': 'cluster.index'})
 
-    # --- CRITICAL FIX 2: Robust Type Conversion for CANOPUS Data ---
-    # Ensure cluster IDs are integers to match GNPS data correctly during merge
-    try:
-        canopus_df['cluster.index'] = pd.to_numeric(canopus_df['cluster.index'], errors='coerce', downcast='integer')
-        canopus_df = canopus_df.dropna(subset=['cluster.index'])
-        canopus_df['cluster.index'] = canopus_df['cluster.index'].astype(int)
-    except Exception as e:
-        st.error(f"Error converting CANOPUS cluster.index to integer: {e}")
-        return None
-    
     col_mapping = {
         'NPC#pathway': 'NPC_Pathway',
         'NPC#superclass': 'NPC_Superclass',
@@ -142,7 +109,6 @@ def process_pipeline(gnps_df, canopus_df):
     sirius_subset = canopus_df[['cluster.index'] + target_cols].copy()
 
     # --- Merge & Propagate ---
-    # Merge using the now-consistent integer IDs
     merged_df = pd.merge(sirius_subset, net_data, on='cluster.index', how='right')
 
     propagation_targets = [
@@ -171,8 +137,6 @@ def process_pipeline(gnps_df, canopus_df):
         has_consensus = merged_df[cons_col_name].notna()
         original_missing = (merged_df[target_col].isna()) | (merged_df[target_col] == "") | (merged_df[target_col] == "NA")
         
-        # This mask ensures we only update the classification column if a consensus exists 
-        # AND the original classification was missing (the Molnetenhancer step)
         mask = is_network & has_consensus & original_missing
         merged_df.loc[mask, target_col] = merged_df.loc[mask, cons_col_name]
         
@@ -180,7 +144,7 @@ def process_pipeline(gnps_df, canopus_df):
 
     progress_bar.empty()
     return merged_df
-    
+
 # --- Main UI Layout ---
 
 with st.sidebar:
